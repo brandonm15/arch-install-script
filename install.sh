@@ -135,7 +135,7 @@ cd /mnt
 btrfs subvolume create @
 btrfs subvolume create @home
 echo "Btrfs Subvolumes created."
-cd
+cd -
 umount /mnt
 
 # Mount filesystems
