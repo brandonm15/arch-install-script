@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+echo -e "\n\nStarting chroot installation script...\n"
+
 # Load config
 set -a
 source /config.conf
@@ -10,43 +12,33 @@ set +a
 ### Time / locale / keymap
 ### ---------------------------------------------------------------------
 
-echo $TZ_VAR
-echo $LOCALE_VAR
-echo $KEYMAP_VAR
-echo $HOSTNAME_VAR
-echo $ROOTPASS_VAR
-echo $USERPASS_VAR
-echo $LUKS_PASS_VAR
-echo $UCPU_VAR
-echo $MOUNT_OPTIONS_VAR
-echo $SKIP_UEFI_CHECK_VAR
-
-exit 0
-
-ln -sf "/usr/share/zoneinfo/${TZ_VAR}" /etc/localtime
+ln -sf "/usr/share/zoneinfo/${TZ}" /etc/localtime
 hwclock --systohc
-sed -i "s/^#\(${LOCALE_VAR//\//\\/}\)/\0/" /etc/locale.gen
+sed -i "s/^#\(${LOCALE//\//\\/}\)/\0/" /etc/locale.gen
 locale-gen
-printf "LANG=%s\n" "$LOCALE_VAR" > /etc/locale.conf
-printf "KEYMAP=%s\n" "$KEYMAP_VAR" > /etc/vconsole.conf
+printf "LANG=%s\n" "$LOCALE" > /etc/locale.conf
+# printf "KEYMAP=%s\n" "$KEYMAP" > /etc/vconsole.conf
 
 # Hostname
-echo "$HOSTNAME_VAR" > /etc/hostname
-cat >/etc/hosts <<EOF
-126.0.0.1 localhost
-::0       localhost
-126.0.1.1 ${HOSTNAME_VAR}.localdomain ${HOSTNAME_VAR}
-EOF
+echo "$HOSTNAME" > /etc/hostname
 
-# Users
-echo "root:${ROOTPASS_VAR}" | chpasswd
-useradd -m -g users -G wheel "${USERNAME_VAR}"
-echo "${USERNAME_VAR}:${USERPASS_VAR}" | chpasswd
-pacman -S --noconfirm sudo vim
-visudo -c >/dev/null || true
+
+
+### Users
+### ---------------------------------------------------------------------
+
+echo "root:${ROOTPASS}" | chpasswd
+useradd -m -g users -G wheel "${USERNAME}"
+echo "${USERNAME}:${USERPASS}" | chpasswd
+chmod u+w /etc/sudoers
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+chmod u-w /etc/sudoers
 
-# Core pkgs (from your notes; fixed typos)
+
+
+### Core pkgs
+### ---------------------------------------------------------------------
+
 pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
@@ -70,16 +62,20 @@ grub-mkconfig -o /boot/grub/grub.cfg
 
 # Enable base services
 systemctl enable NetworkManager
-systemctl enable bluetooth
+if [ "$HAS_BLUETOOTH" = true ]; then
+  systemctl enable bluetooth
+fi
+if [ "$HAS_BATTERY" = true ]; then
+  systemctl enable acpid
+fi
 systemctl enable sshd
 systemctl enable ufw
-systemctl enable acpid
 
 # UFW basic rules (optional)
-ufw default deny incoming || true
-ufw default allow outgoing || true
-ufw allow OpenSSH || true
-ufw --force enable || true
+#ufw default deny incoming || true
+#ufw default allow outgoing || true
+#ufw allow OpenSSH || true
+#ufw --force enable || true
 
 # --- KDE Plasma desktop (full meta) + SDDM ---
 # plasma-meta is the full Plasma 5 desktop; kde-applications-meta is the app suite (optional)
