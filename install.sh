@@ -11,6 +11,8 @@ CONFIG_DIR="./configs"
 ### Handle Config File
 ### ---------------------------------------------------------------------
 
+echo -e "\n\n"
+
 if [ ! -d "$CONFIG_DIR" ]; then
   echo "Config directory '$CONFIG_DIR' not found."
   exit 1
