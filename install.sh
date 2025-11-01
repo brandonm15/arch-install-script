@@ -6,19 +6,6 @@
 
 set -euo pipefail
 
-### --- EDIT ME ---
-DISK="/dev/sda"   # Root Disk for install     
-HOSTNAME="archbox" # Hostname for the system
-USERNAME="brandon" # Username for the system
-ROOTPASS="changepass123" # Root password for the system !!! CHANGE THIS !!!
-USERPASS="changepass123" # User password for the system !!! CHANGE THIS !!!
-LUKS_PASS="changepass123" # LUKS password for the system !!! CHANGE THIS !!!
-TZ="Australia/Sydney" # Timezone for the system
-LOCALE="en_US.UTF-8" # Locale for the system
-KEYMAP="us" # Keymap for the system
-UCPU="amd-ucode" # CPU microcode for the system
-MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=sync"
-### ---------------
 
 INSTALLER_CHROOT_SCRIPT_URL="https://raw.githubusercontent.com/brandonm15/arch-install-script/main/in_chroot_install.sh"
 
@@ -57,7 +44,7 @@ swapoff -a || true
 umount -R /mnt 2>/dev/null || true
 cryptsetup luksClose main 2>/dev/null || true
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 
 ### Set Locale and Timezone ---
@@ -68,7 +55,7 @@ echo "Setting Timezone..."
 timedatectl set-timezone Australia/Sydney
 timedatectl set-ntp true
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 
 ### Partition Disk ---
@@ -85,7 +72,7 @@ sgdisk -n1:0:+1GiB -t1:ef00 -c1:"EFI System" "$DISK"
 sgdisk -n2:0:0      -t2:8300 -c2:"Linux (Btrfs+LUKS)" "$DISK"
 echo "Disk partitioned."
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 
 ### Encrypt Disk and Make filesystem ---
@@ -106,7 +93,7 @@ MAIN="${DISK}${PFX}2"
 mkfs.fat -F32 "$EFI"
 mkfs.btrfs -f /dev/mapper/main
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 ### Create Btrfs Subvolumes and mount ---
 echo "Creating Btrfs Subvolumes and mounting --------------------------------------------------"
@@ -130,7 +117,7 @@ mkdir /mnt/boot
 mount "$EFI" /mnt/boot
 echo "Filesystems mounted."
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 ### Install Base ---
 echo "Installing Base --------------------------------------------------"
@@ -140,7 +127,7 @@ pacstrap /mnt base
 # fstab
 genfstab -U /mnt >> /mnt/etc/fstab
 
-echo "--------------------------------------------------\n"
+echo -e "--------------------------------------------------\n"
 
 
 ### Copy rest of installer script into chroot ---
@@ -154,3 +141,7 @@ echo "Chrooting --------------------------------------------------"
 
 # Chroot config
 arch-chroot /mnt /bin/bash in_chroot_install.sh
+
+echo -e "--------------------------------------------------\n"
+
+echo "End of main install script \n"
