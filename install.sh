@@ -49,6 +49,7 @@ set -a
 source "$CONFIG_FILE"
 set +a
 
+echo -e "\n"
 
 ### Init Checks and Setup 
 ### ---------------------------------------------------------------------
@@ -106,6 +107,11 @@ echo "Disk partitioned."
 ### Encrypt Disk and Make filesystem 
 ### ---------------------------------------------------------------------
 
+PFX=""
+[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PFX="p"
+EFI="${DISK}${PFX}1"
+MAIN="${DISK}${PFX}2"
+
 echo "Encrypting Disk..."
 echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN" -q -
 echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN" main -
@@ -113,10 +119,6 @@ echo "Disk encrypted."
 
 echo "Making filesystem..."
 
-PFX=""
-[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PFX="p"
-EFI="${DISK}${PFX}1"
-MAIN="${DISK}${PFX}2"
 
 mkfs.fat -F32 "$EFI"
 mkfs.btrfs -f /dev/mapper/main
