@@ -8,7 +8,7 @@ GIT_REPO_URL="git@github.com:brandonm15/arch-install-script.git"
 
 set -euo pipefail
 
-pacman -Syu --noconfirm git
+pacman -S --noconfirm git
 
 # Clone the repository
 git clone "$GIT_REPO_URL"
