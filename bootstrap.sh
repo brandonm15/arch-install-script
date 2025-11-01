@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # Get instructions:
-# curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/main/bootstrap.sh -o bootstrap.sh
-# chmod +x bootstrap.sh
+# curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/main/bootstrap.sh | bash
 
 GIT_REPO_URL="git@github.com:brandonm15/arch-install-script.git"
 
