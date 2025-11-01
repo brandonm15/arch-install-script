@@ -4,7 +4,7 @@
 # curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/install.sh -o install.sh
 # chmod +x install.sh
 
-set -euo pipefail
+set -eo pipefail
 
 CONFIG_DIR="./configs"
 
