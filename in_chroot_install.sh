@@ -27,6 +27,7 @@ echo "$HOSTNAME" > /etc/hostname
 ### Users
 ### ---------------------------------------------------------------------
 
+pacman -S --noconfirm sudo
 echo "root:${ROOTPASS}" | chpasswd
 useradd -m -g users -G wheel "${USERNAME}"
 echo "${USERNAME}:${USERPASS}" | chpasswd
