@@ -20,7 +20,7 @@ UCPU="amd-ucode" # CPU microcode for the system
 MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=sync"
 ### ---------------
 
-INSTALLER_CHROOT_SCRIPT_URL="https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/in_chroot_install.sh"
+INSTALLER_CHROOT_SCRIPT_URL="https://raw.githubusercontent.com/brandonm15/arch-install-script/main/in_chroot_install.sh"
 
 # Startup
 echo "Starting installation..."
