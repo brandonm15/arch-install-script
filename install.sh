@@ -1,4 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
+# how to get:
+# curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/install.sh -o install.sh
+# chmod +x install.sh
 
 set -euo pipefail
 
@@ -13,7 +17,10 @@ TZ="Australia/Sydney" # Timezone for the system
 LOCALE="en_US.UTF-8" # Locale for the system
 KEYMAP="us" # Keymap for the system
 UCPU="amd-ucode" # CPU microcode for the system
+MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=sync"
 ### ---------------
+
+INSTALLER_CHROOT_SCRIPT_URL="https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/install.sh"
 
 # Startup
 echo "Starting installation..."
@@ -81,50 +88,69 @@ echo "Disk partitioned."
 echo "--------------------------------------------------\n"
 
 
-### Encrypt Disk ---
-echo "Encrypting Disk --------------------------------------------------"
+### Encrypt Disk and Make filesystem ---
+echo "Encrypting Disk and Making filesystem --------------------------------------------------"
 
 echo "Encrypting Disk..."
 echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN" -q -
 echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN" main -
 echo "Disk encrypted."
 
-echo "--------------------------------------------------\n"
-
-
+echo "Making filesystem..."
 
 PFX=""
 [[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PFX="p"
 EFI="${DISK}${PFX}1"
 MAIN="${DISK}${PFX}2"
 
-# Encrypt main
-echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN" -q -
-echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN" main -
-
-# Btrfs + subvols
+mkfs.fat -F32 "$EFI"
 mkfs.btrfs -f /dev/mapper/main
+
+echo "--------------------------------------------------\n"
+
+### Create Btrfs Subvolumes and mount ---
+echo "Creating Btrfs Subvolumes and mounting --------------------------------------------------"
+
+# Create Btrfs Subvolumes
+echo "Creating Btrfs Subvolumes..."
 mount /dev/mapper/main /mnt
-btrfs subvolume create /mnt/@
-btrfs subvolume create /mnt/@home
+cd /mnt
+btrfs subvolume create @
+btrfs subvolume create @home
+echo "Btrfs Subvolumes created."
+cd
 umount /mnt
 
-# Mount root/home (discard=sync per your notes)
-mount -o noatime,ssd,compress=zstd,space_cache=v2,discard=sync,subvol=@ /dev/mapper/main /mnt
-mkdir -p /mnt/home
-mount -o noatime,ssd,compress=zstd,space_cache=v2,discard=sync,subvol=@home /dev/mapper/main /mnt/home
-
-# EFI
-mkfs.fat -F32 "$EFI"
-mkdir -p /mnt/boot
+# Mount filesystems
+echo "Mounting..."
+mount -o $MOUNT_OPTIONS,subvol=@ /dev/mapper/main /mnt
+mkdir /mnt/home
+mount -o $MOUNT_OPTIONS,subvol=@home /dev/mapper/main /mnt/home
+mkdir /mnt/boot
 mount "$EFI" /mnt/boot
+echo "Filesystems mounted."
 
-# Base
-pacman -Sy --noconfirm archlinux-keyring
+echo "--------------------------------------------------\n"
+
+### Install Base ---
+echo "Installing Base --------------------------------------------------"
+
+# Install Base
 pacstrap /mnt base
-
 # fstab
 genfstab -U /mnt >> /mnt/etc/fstab
+
+echo "--------------------------------------------------\n"
+
+
+### Copy rest of installer script into chroot ---
+echo "Copying rest of installer script into chroot --------------------------------------------------"
+cp install.sh /mnt/install.sh
+chmod +x /mnt/install.sh
+echo "--------------------------------------------------\n"
+
+### Chroot ---
+echo "Chrooting --------------------------------------------------"
 
 # Chroot config
 arch-chroot /mnt /bin/bash <<'CHROOT'
