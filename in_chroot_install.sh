@@ -2,19 +2,27 @@
 
 set -euo pipefail
 
-echo "Starting chroot installation..."
-printf "3..."
-sleep 1
-printf "2..."
-sleep 1
-printf "1..."
-sleep 1
-printf "GO!"
-sleep 1
+# Load config
+set -a
+source /config.conf
+set +a
 
-echo "--------------------------------------------------\n"
+### Time / locale / keymap
+### ---------------------------------------------------------------------
 
-# Time / locale / keymap
+echo $TZ_VAR
+echo $LOCALE_VAR
+echo $KEYMAP_VAR
+echo $HOSTNAME_VAR
+echo $ROOTPASS_VAR
+echo $USERPASS_VAR
+echo $LUKS_PASS_VAR
+echo $UCPU_VAR
+echo $MOUNT_OPTIONS_VAR
+echo $SKIP_UEFI_CHECK_VAR
+
+exit 0
+
 ln -sf "/usr/share/zoneinfo/${TZ_VAR}" /etc/localtime
 hwclock --systohc
 sed -i "s/^#\(${LOCALE_VAR//\//\\/}\)/\0/" /etc/locale.gen
