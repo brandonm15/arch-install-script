@@ -8,6 +8,8 @@ GIT_REPO_URL="https://github.com/brandonm15/arch-install-script.git"
 
 set -euo pipefail
 
+pacman -Sy
+
 if ! pacman -Q git &>/dev/null; then
   pacman -S --noconfirm git
 fi

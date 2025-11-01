@@ -44,7 +44,7 @@ pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
   bluez bluez-utils pipewire alsa-utils pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd alacritty "$UCPU_VAR"
+  ttf-firacode-nerd alacritty "$CPU_MICROCODE"
 
 # mkinitcpio: add encrypt hook and btrfs module, then rebuild
 sed -i 's/^MODULES=.*/MODULES=(btrfs atkbd)/' /etc/mkinitcpio.conf
