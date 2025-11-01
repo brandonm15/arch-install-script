@@ -13,38 +13,41 @@ CONFIG_DIR="./configs"
 
 echo -e "\n\n"
 
-if [[ ! -d "$CONFIG_DIR" ]]; then
-  echo "Config directory '$CONFIG_DIR' not found."
-  exit 1
-fi
+CONFIG_FILE=""
 
-# Get all .conf files in the directory
-config_files=()
-while IFS= read -r -d '' file; do
-  config_files+=("$file")
-done < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name '*.conf' -print0 | sort -z)
+if [[ $# -gt 0 ]]; then
+  CONFIG_FILE="$CONFIG_DIR/$1"
+elif [ -t 0 ]; then
+  # Interactive shell, prompt user
+  echo "Available config files:"
+  mapfile -t config_files < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name '*.conf' | sort)
 
-if [[ ${#config_files[@]} -eq 0 ]]; then
-  echo "No config files found in $CONFIG_DIR"
-  exit 1
-fi
+  for i in "${!config_files[@]}"; do
+    printf "%2d) %s\n" "$((i+1))" "$(basename "${config_files[$i]}")"
+  done
 
-echo "Select a config file:"
-select file in "${config_files[@]}"; do
-  if [[ -n "$file" ]]; then
-    CONFIG_FILE="$file"
-    break
+  read -rp "Select a config (1-${#config_files[@]}): " selection
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#config_files[@]} )); then
+    echo "Invalid selection"
+    exit 1
   fi
-  echo "Invalid selection."
-done
 
-echo "Using config: $CONFIG_FILE"
+  CONFIG_FILE="${config_files[$((selection-1))]}"
+else
+  echo "This script needs a config argument when run non-interactively."
+  echo "Usage: bash -s server.conf"
+  exit 1
+fi
 
-# Export variables from config
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "Config file '$CONFIG_FILE' not found."
+  exit 1
+fi
+
 set -a
 source "$CONFIG_FILE"
 set +a
-
 
 
 ### Init Checks and Setup 
