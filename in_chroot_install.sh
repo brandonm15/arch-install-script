@@ -1,15 +1,5 @@
-#! /bin/bash
-
-# One of the commands does not exit with 0 so it breaks script.  Fix later.
-#set -euo pipefail
-
-# Helpful vars
-LUKS_LABEL="main"
-PARTITION_PFX=""
-[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PARTITION_PFX="p"
-EFI_PARTITION_DEV="${DISK}${PARTITION_PFX}1"
-MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
-MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
+#!/bin/bash
+set -euo pipefail
 
 echo -e "\n\nStarting chroot installation script...\n"
 
@@ -18,121 +8,127 @@ set -a
 source /config.conf
 set +a
 
-### Time / locale / keymap
-### ---------------------------------------------------------------------
-
+# -----------------------------
+# Time / locale / keymap
+# -----------------------------
 ln -sf "/usr/share/zoneinfo/${TZ}" /etc/localtime
 hwclock --systohc
-sed -i "s/^#\(${LOCALE//\//\\/}\)/\0/" /etc/locale.gen
+
+# Enable locale in /etc/locale.gen
+sed -i "s/^#\s*\(${LOCALE//\//\\/}\)/\1/" /etc/locale.gen
 locale-gen
 printf "LANG=%s\n" "$LOCALE" > /etc/locale.conf
-# printf "KEYMAP=%s\n" "$KEYMAP" > /etc/vconsole.conf
+
+# Keymap
+[ -n "${KEYMAP:-}" ] && printf "KEYMAP=%s\n" "$KEYMAP" > /etc/vconsole.conf
 
 # Hostname
 echo "$HOSTNAME" > /etc/hostname
 
-
-
-### Users
-### ---------------------------------------------------------------------
-
+# -----------------------------
+# Users
+# -----------------------------
 pacman -S --noconfirm sudo
 echo "root:${ROOTPASS}" | chpasswd
-useradd -m -g users -G wheel "${USERNAME}"
+useradd -m -G wheel "${USERNAME}"
 echo "${USERNAME}:${USERPASS}" | chpasswd
-chmod u+w /etc/sudoers
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-chmod u-w /etc/sudoers
 
-
-
-### Core pkgs
-### ---------------------------------------------------------------------
-
+# -----------------------------
+# Core packages
+# -----------------------------
 pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
-  bluez bluez-utils pipewire alsa-utils pipewire-pulse pipewire-jack sof-firmware \
+  bluez bluez-utils pipewire pipewire-pulse pipewire-jack sof-firmware \
   ttf-firacode-nerd alacritty
 
-if [ "$CPU" == "amd" ]; then
+# CPU microcode
+if [[ "$CPU" == "amd" ]]; then
   pacman -S --noconfirm amd-ucode
-elif [ "$CPU" == "intel" ]; then
+elif [[ "$CPU" == "intel" ]]; then
   pacman -S --noconfirm intel-ucode
 fi
 
-# mkinitcpio: add encrypt hook and btrfs module, then rebuild
-sed -i 's/^MODULES=.*/MODULES=(btrfs atkbd)/' /etc/mkinitcpio.conf
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt btrfs filesystems fsck)/' /etc/mkinitcpio.conf
-mkinitcpio -p linux
+# -----------------------------
+# mkinitcpio
+# -----------------------------
+# Place microcode early, encrypt only if encryption enabled
+if [[ "${ENCRYPT_DISK:-false}" == true ]]; then
+  HOOKS="(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt btrfs filesystems fsck)"
+else
+  HOOKS="(base udev autodetect microcode modconf kms keyboard keymap consolefont block btrfs filesystems fsck)"
+fi
 
-# GRUB (UEFI)
+sed -i 's/^MODULES=.*/MODULES=(btrfs atkbd)/' /etc/mkinitcpio.conf
+sed -i "s|^HOOKS=.*|HOOKS=$HOOKS|" /etc/mkinitcpio.conf
+
+mkinitcpio -P
+
+# -----------------------------
+# GRUB
+# -----------------------------
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 
-## Add cryptdevice + root mapping; remove 'quiet'
-#LUKS_UUID=$(blkid -s UUID -o value "$(lsblk -no PKNAME /dev/mapper/main | sed "s|^|/dev/|")")
-#grub-mkconfig -o /boot/grub/grub.cfg
-#sed -i 's/ quiet//g' /etc/default/grub
-#sed -i "s~^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"~GRUB_CMDLINE_LINUX_DEFAULT=\"\0 cryptdevice=UUID=${LUKS_UUID}:main root=/dev/mapper/main\"~" /etc/default/grub
-#grub-mkconfig -o /boot/grub/grub.cfg
-# Detect the LUKS partition (the one with crypto_LUKS type)
-LUKS_DEV=$(blkid -t TYPE=crypto_LUKS -o device)
-LUKS_UUID=$(blkid -s UUID -o value "$LUKS_DEV")
-
-# Remove 'quiet' and add cryptdevice mapping
+# Remove quiet
 sed -i 's/ quiet//g' /etc/default/grub
-sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"cryptdevice=UUID=$LUKS_UUID:main root=/dev/mapper/main\"|" /etc/default/grub
+
+if [[ "${ENCRYPT_DISK:-false}" == true ]]; then
+  # Insert cryptdevice only when using encryption
+  LUKS_DEV=$(blkid -t TYPE=crypto_LUKS -o device)
+  LUKS_UUID=$(blkid -s UUID -o value "$LUKS_DEV")
+  sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"cryptdevice=UUID=$LUKS_UUID:main root=/dev/mapper/main\"|" /etc/default/grub
+else
+  # Standard root= line
+  ROOT_UUID=$(blkid -s UUID -o value "$(blkid -t TYPE=btrfs -o device | head -n1)")
+  sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"root=UUID=$ROOT_UUID rootflags=subvol=@\"|" /etc/default/grub
+fi
 
 grub-mkconfig -o /boot/grub/grub.cfg
 
-
-# Enable base services
+# -----------------------------
+# Services
+# -----------------------------
 systemctl enable NetworkManager
-if [ "$HAS_BLUETOOTH" = true ]; then
-  systemctl enable bluetooth
-fi
-if [ "$HAS_BATTERY" = true ]; then
-  systemctl enable acpid
-fi
-if [ "$SSD_DISK" = true ]; then
-  systemctl enable fstrim.timer
-fi
+[[ "$HAS_BLUETOOTH" == true ]] && systemctl enable bluetooth
+[[ "$HAS_BATTERY" == true ]] && systemctl enable acpid
+[[ "$SSD_DISK" == true ]] && systemctl enable fstrim.timer
 systemctl enable sshd
 systemctl enable ufw
 
-# UFW basic rules (optional)
-#ufw default deny incoming || true
-#ufw default allow outgoing || true
-#ufw allow OpenSSH || true
-#ufw --force enable || true
+# -----------------------------
+# Yay Install as USER (not root)
+# -----------------------------
+sudo -u "$USERNAME" bash <<EOF
+  set -e
+  cd /home/$USERNAME
+  git clone https://aur.archlinux.org/yay.git
+  cd yay
+  makepkg -si --noconfirm
+  cd ..
+  rm -rf yay
+EOF
 
-# Install Yay
-sudo pacman -S --needed git base-devel
-git clone https://aur.archlinux.org/yay.git
-cd yay
-makepkg -si
-cd ..
-rm -rf yay
+# -----------------------------
+# KDE Plasma (no bloat)
+# -----------------------------
+pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
+systemctl enable sddm.service
 
+# Optional Wayland support:
+# pacman -S --noconfirm plasma-wayland-session
 
-# --- KDE Plasma desktop (full meta) + SDDM ---
-# plasma-meta is the full Plasma 5 desktop; kde-applications-meta is the app suite (optional)
-sudo pacman -S plasma-meta sddm xdg-desktop-portal-kde
-sudo systemctl enable sddm
-
-
-# Install packages from list
+# -----------------------------
+# Install extra packages
+# -----------------------------
 for pkg in "${PACMAN_INSTALL_LIST[@]}"; do
   pacman -S --noconfirm "$pkg"
 done
+
 for pkg in "${YAY_INSTALL_LIST[@]}"; do
-  yay -S --noconfirm "$pkg"
-
-
-# Enable display manager
-systemctl enable sddm.service
-
+  sudo -u "$USERNAME" yay -S --noconfirm "$pkg"
+done
 
 echo
-echo "Done. Now reboot into KDE:"
+echo "✅ Done inside chroot. When outside, run:"
 echo "  umount -R /mnt && reboot"

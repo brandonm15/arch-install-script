@@ -1,213 +1,171 @@
 #!/bin/bash
+# Arch automated install (Btrfs, optional LUKS, UEFI), VirtualBox-friendly
+# Usage (interactive):   ./install.sh
+# Usage (non-interactive):  ./install.sh configs/server.conf
+#
+# To fetch:
+#   curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/install.sh -o install.sh
+#   chmod +x install.sh
 
-# how to get:
-# curl -fsSL https://raw.githubusercontent.com/brandonm15/arch-install-script/refs/heads/main/install.sh -o install.sh
-# chmod +x install.sh
-
-set -eo pipefail
+set -euo pipefail
 
 CONFIG_DIR="./configs"
 
-# Helpful vars
-LUKS_LABEL="main"
+# ---------------------------
+# Helpers
+# ---------------------------
+info() { printf "\n[INFO] %s\n" "$*"; }
+warn() { printf "\n[WARN] %s\n" "$*" >&2; }
+die()  { printf "\n[ERR ] %s\n" "$*" >&2; exit 1; }
+
+# ---------------------------
+# Pick / Load config
+# ---------------------------
+echo
+CONFIG_FILE=""
+if [[ $# -gt 0 ]]; then
+  CONFIG_FILE="$CONFIG_DIR/$1"
+elif [ -t 0 ]; then
+  info "Available config files:"
+  mapfile -t config_files < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name '*.conf' | sort)
+  ((${#config_files[@]})) || die "No *.conf files found in $CONFIG_DIR"
+  for i in "${!config_files[@]}"; do
+    printf "%2d) %s\n" "$((i+1))" "$(basename "${config_files[$i]}")"
+  done
+  read -rp "Select a config (1-${#config_files[@]}): " selection
+  [[ "$selection" =~ ^[0-9]+$ ]] && (( selection>=1 && selection<=${#config_files[@]} )) \
+    || die "Invalid selection"
+  CONFIG_FILE="${config_files[$((selection-1))]}"
+else
+  die "This script needs a config argument when run non-interactively. Example: ./install.sh server.conf"
+fi
+
+[[ -f "$CONFIG_FILE" ]] || die "Config file '$CONFIG_FILE' not found."
+
+# shellcheck disable=SC1090
+set -a
+source "$CONFIG_FILE"
+set +a
+
+# ---------------------------
+# Derived vars (AFTER config)
+# ---------------------------
+[[ -n "${DISK:-}" ]] || die "DISK not set in config."
+[[ -b "$DISK" ]] || die "DISK '$DISK' is not a block device."
+
+LUKS_LABEL="${LUKS_LABEL:-main}"
+
 PARTITION_PFX=""
-[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PARTITION_PFX="p"
+if [[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]]; then
+  PARTITION_PFX="p"
+fi
+
 EFI_PARTITION_DEV="${DISK}${PARTITION_PFX}1"
 MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
 MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
 
 SSD_MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=async"
 HDD_MOUNT_OPTIONS="noatime,compress=zstd,space_cache=v2,discard=async"
+MOUNT_OPTIONS="$([[ "${SSD_DISK:-false}" == true ]] && echo "$SSD_MOUNT_OPTIONS" || echo "$HDD_MOUNT_OPTIONS")"
 
-### Handle Config File
-### ---------------------------------------------------------------------
+# ---------------------------
+# Pre-flight checks
+# ---------------------------
+info "Checking internet connectivity..."
+ping -c1 -W2 archlinux.org >/dev/null || die "No internet."
 
-echo -e "\n\n"
-
-CONFIG_FILE=""
-
-if [[ $# -gt 0 ]]; then
-  CONFIG_FILE="$CONFIG_DIR/$1"
-elif [ -t 0 ]; then
-  # Interactive shell, prompt user
-  echo "Available config files:"
-  mapfile -t config_files < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name '*.conf' | sort)
-
-  for i in "${!config_files[@]}"; do
-    printf "%2d) %s\n" "$((i+1))" "$(basename "${config_files[$i]}")"
-  done
-
-  read -rp "Select a config (1-${#config_files[@]}): " selection
-
-  if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#config_files[@]} )); then
-    echo "Invalid selection"
-    exit 1
-  fi
-
-  CONFIG_FILE="${config_files[$((selection-1))]}"
-else
-  echo "This script needs a config argument when run non-interactively."
-  echo "Usage: bash -s server.conf"
-  exit 1
+if [[ "${SKIP_UEFI_CHECK:-false}" != true ]]; then
+  info "Checking UEFI boot..."
+  [[ -d /sys/firmware/efi ]] || die "Boot the ISO in UEFI mode."
 fi
 
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Config file '$CONFIG_FILE' not found."
-  exit 1
-fi
-
-set -a
-source "$CONFIG_FILE"
-set +a
-
-echo -e "\n"
-
-### Init Checks and Setup 
-### ---------------------------------------------------------------------
-
-# Check internet connection
-echo "Checking for internet connection..."
-ping -c1 -W2 archlinux.org >/dev/null || { echo "No internet."; exit 1; }
-echo "Internet connection found."
-
-# Check for UEFI mode
-if [ "$SKIP_UEFI_CHECK" != true ]; then
-  echo "Checking for UEFI mode..."
-  [ -d /sys/firmware/efi ] || { echo "Boot the ISO in UEFI mode."; exit 1; }
-  echo "UEFI mode found."
-fi
-
-# Check disk path exists
-#echo "Checking for disk path..."
-#[ -d "$DISK" ] || { echo "Disk path does not exist."; exit 1; }
-#echo "Disk path found."
-
-# Check if nothing is mounted
-echo "Checking if nothing is mounted..."
+# Ensure clean slate
+info "Ensuring nothing is mounted..."
 swapoff -a || true
 umount -R /mnt 2>/dev/null || true
-cryptsetup luksClose main 2>/dev/null || true
+if [[ -e "$MAIN_ENCRYPTED_PARTITION_DEV" ]]; then
+  cryptsetup luksClose "$LUKS_LABEL" 2>/dev/null || true
+fi
+mkdir -p /mnt
 
-
-
-### Set Locale and Timezone 
-### ---------------------------------------------------------------------
-
-# Set iso timezone
-echo "Setting Timezone..."
-timedatectl set-timezone Australia/Sydney
+# Set clock/timezone (helpful when generating locales later)
+info "Setting timezone/ntp..."
+timedatectl set-timezone "${TZ:-Australia/Sydney}"
 timedatectl set-ntp true
 
-
-
-### Partition Disk 
-### ---------------------------------------------------------------------
-
-# Partition Disk
-echo "Partitioning Disk..."
-
-echo "About to WIPE ${DISK}. Ctrl+C to abort."
+# ---------------------------
+# Partition Disk (DESTROYS DATA)
+# ---------------------------
+info "About to WIPE ${DISK}. Ctrl+C to abort."
 sleep 5
 
+info "Partitioning disk..."
 sgdisk --zap-all "$DISK"
 sgdisk -n1:0:+1GiB -t1:ef00 -c1:"EFI System" "$DISK"
 sgdisk -n2:0:0      -t2:8300 -c2:"Linux (Btrfs+LUKS)" "$DISK"
-echo "Disk partitioned."
+partprobe "$DISK"
+udevadm settle
 
-
-### Encrypt Disk (If enabled) 
-### ---------------------------------------------------------------------
-
-
-if [ "$ENCRYPT_DISK" == true ]; then
-  echo "Encrypting Disk..."
-  echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN_PARTITION_DEV" -q -
-  echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN_PARTITION_DEV" "$LUKS_LABEL" -
-fi
-
-
-
-### Create Btrfs Subvolumes and mount 
-### ---------------------------------------------------------------------
-
-# Create Btrfs Subvolumes
-if [ "$ENCRYPT_DISK" == true ]; then  
-  mkfs.btrfs -f "$MAIN_ENCRYPTED_PARTITION_DEV"
-else
-  mkfs.btrfs -f "$MAIN_PARTITION_DEV"
-fi
-echo "Creating Btrfs Subvolumes..."
-
-# Format efi partition
+# ---------------------------
+# Filesystems & (optional) LUKS
+# ---------------------------
+info "Formatting EFI system partition..."
 mkfs.fat -F32 "$EFI_PARTITION_DEV"
 
-# Mount correct partition
-if [ "$ENCRYPT_DISK" == true ]; then
-  mount "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt
+if [[ "${ENCRYPT_DISK:-false}" == true ]]; then
+  info "Encrypting main partition with LUKS..."
+  # Read passphrase from variable via stdin
+  echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN_PARTITION_DEV" -q --key-file=-
+  echo -n "$LUKS_PASS" | cryptsetup luksOpen   "$MAIN_PARTITION_DEV" "$LUKS_LABEL" --key-file=-
+  info "Creating Btrfs on encrypted mapper..."
+  mkfs.btrfs -f "$MAIN_ENCRYPTED_PARTITION_DEV"
+  ROOT_DEV="$MAIN_ENCRYPTED_PARTITION_DEV"
 else
-  mount "$MAIN_PARTITION_DEV" /mnt
+  warn "ENCRYPT_DISK=false — proceeding WITHOUT full-disk encryption."
+  info "Creating Btrfs on main partition..."
+  mkfs.btrfs -f "$MAIN_PARTITION_DEV"
+  ROOT_DEV="$MAIN_PARTITION_DEV"
 fi
 
-# Create Btrfs Subvolumes
-cd /mnt
-btrfs subvolume create @
-btrfs subvolume create @home
-echo "Btrfs Subvolumes created."
-cd -
+# ---------------------------
+# Btrfs layout & mounts
+# ---------------------------
+info "Creating Btrfs subvolumes..."
+mount "$ROOT_DEV" /mnt
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
 umount /mnt
 
-# Get correct mount options
-if [ "$SSD_DISK" == true ]; then
-  MOUNT_OPTIONS="$SSD_MOUNT_OPTIONS"
-else
-  MOUNT_OPTIONS="$HDD_MOUNT_OPTIONS"
-fi
-
-# Mount filesystems
-echo "Mounting..."
-if [ "$ENCRYPT_DISK" == true ]; then
-  mount -o $MOUNT_OPTIONS,subvol=@ "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt
-else
-  mount -o $MOUNT_OPTIONS,subvol=@ "$MAIN_PARTITION_DEV" /mnt
-fi
-mkdir /mnt/home
-if [ "$ENCRYPT_DISK" == true ]; then
-  mount -o $MOUNT_OPTIONS,subvol=@home "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt/home
-else
-  mount -o $MOUNT_OPTIONS,subvol=@home "$MAIN_PARTITION_DEV" /mnt/home
-fi
-mkdir /mnt/boot
-
+info "Mounting filesystems..."
+mount -o "$MOUNT_OPTIONS",subvol=@ "$ROOT_DEV" /mnt
+mkdir -p /mnt/home
+mount -o "$MOUNT_OPTIONS",subvol=@home "$ROOT_DEV" /mnt/home
+mkdir -p /mnt/boot
 mount "$EFI_PARTITION_DEV" /mnt/boot
-echo "Filesystems mounted."
 
+# ---------------------------
+# Base install
+# ---------------------------
+info "Installing base system..."
+pacstrap /mnt base base-devel
 
-
-### Install Base 
-### ---------------------------------------------------------------------
-
-# Install Base
-pacstrap /mnt base
-# fstab
+info "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 
-
-### Copy rest of installer script into chroot 
-### ---------------------------------------------------------------------
-
-# Copy file
+# ---------------------------
+# Prepare in-chroot phase
+# ---------------------------
+info "Copying in-chroot script and config..."
+[[ -f in_chroot_install.sh ]] || die "Missing in_chroot_install.sh in current directory."
 cp in_chroot_install.sh /mnt/in_chroot_install.sh
 chmod +x /mnt/in_chroot_install.sh
-
-# Copy config
 cp "$CONFIG_FILE" /mnt/config.conf
 
+# ---------------------------
+# Chroot
+# ---------------------------
+info "Entering chroot to complete setup..."
+arch-chroot /mnt /bin/bash /in_chroot_install.sh
 
-### Chroot 
-### ---------------------------------------------------------------------
-
-arch-chroot /mnt /bin/bash in_chroot_install.sh
-
-# ---
-
-echo "End of main install script \n"
+info "Installation complete."
+echo -e "\nYou can reboot after exiting the chroot if it hasn't already.\n"
