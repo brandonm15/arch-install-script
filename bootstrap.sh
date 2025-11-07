@@ -5,32 +5,33 @@
 # chmod +x bootstrap.sh
 # ./bootstrap.sh 
 
-GIT_REPO_URL="https://github.com/brandonm15/arch-install-script.git"
-
 set -euo pipefail
 
-pacman -Sy
+GIT_REPO_URL="https://github.com/brandonm15/arch-install-script.git"
+REPO_DIR="arch-install-script"
 
+# Ensure git exists
+pacman -Sy --noconfirm >/dev/null
 if ! pacman -Q git &>/dev/null; then
   pacman -S --noconfirm git
 fi
 
-
-
-#If repo dir exists ask if delete and reclone
-if ! [[ -d "arch-install-script" ]]; then
-  read -p "Repo directory exists. Delete and reclone? (y/N): " delete_repo
-  if [[ "$delete_repo" == "y" ]]; then
-    rm -rf arch-install-script
+# If repo directory exists, ask whether to delete
+if [[ -d "$REPO_DIR" ]]; then
+  read -rp "Directory '$REPO_DIR' already exists. Delete and re-clone? (y/N): " choice
+  if [[ "$choice" =~ ^([yY]|[yY][eE][sS])$ ]]; then
+    rm -rf "$REPO_DIR"
     git clone "$GIT_REPO_URL"
+  else
+    echo "Using existing directory."
   fi
 else
   git clone "$GIT_REPO_URL"
 fi
 
-# make executable
-chmod +x arch-install-script/install.sh
+# Make installer executable
+chmod +x "$REPO_DIR/install.sh"
 
-# Run the installer
-cd arch-install-script
+# Run installer
+cd "$REPO_DIR"
 ./install.sh
