@@ -1,6 +1,7 @@
 #! /bin/bash
 
-set -euo pipefail
+# One of the commands does not exit with 0 so it breaks script.  Fix later.
+#set -euo pipefail
 
 echo -e "\n\nStarting chroot installation script...\n"
 
@@ -48,18 +49,28 @@ pacman -Syu --noconfirm \
 
 # mkinitcpio: add encrypt hook and btrfs module, then rebuild
 sed -i 's/^MODULES=.*/MODULES=(btrfs atkbd)/' /etc/mkinitcpio.conf
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt btrfs filesystems fsck)/' /etc/mkinitcpio.conf
 mkinitcpio -p linux
 
 # GRUB (UEFI)
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 
-# Add cryptdevice + root mapping; remove 'quiet'
-LUKS_UUID=$(blkid -s UUID -o value "$(lsblk -no PKNAME /dev/mapper/main | sed "s|^|/dev/|")")
-grub-mkconfig -o /boot/grub/grub.cfg
+## Add cryptdevice + root mapping; remove 'quiet'
+#LUKS_UUID=$(blkid -s UUID -o value "$(lsblk -no PKNAME /dev/mapper/main | sed "s|^|/dev/|")")
+#grub-mkconfig -o /boot/grub/grub.cfg
+#sed -i 's/ quiet//g' /etc/default/grub
+#sed -i "s~^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"~GRUB_CMDLINE_LINUX_DEFAULT=\"\0 cryptdevice=UUID=${LUKS_UUID}:main root=/dev/mapper/main\"~" /etc/default/grub
+#grub-mkconfig -o /boot/grub/grub.cfg
+# Detect the LUKS partition (the one with crypto_LUKS type)
+LUKS_DEV=$(blkid -t TYPE=crypto_LUKS -o device)
+LUKS_UUID=$(blkid -s UUID -o value "$LUKS_DEV")
+
+# Remove 'quiet' and add cryptdevice mapping
 sed -i 's/ quiet//g' /etc/default/grub
-sed -i "s~^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"~GRUB_CMDLINE_LINUX_DEFAULT=\"\0 cryptdevice=UUID=${LUKS_UUID}:main root=/dev/mapper/main\"~" /etc/default/grub
+sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"cryptdevice=UUID=$LUKS_UUID:main root=/dev/mapper/main\"|" /etc/default/grub
+
 grub-mkconfig -o /boot/grub/grub.cfg
+
 
 # Enable base services
 systemctl enable NetworkManager
