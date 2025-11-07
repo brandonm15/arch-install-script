@@ -8,6 +8,17 @@ set -eo pipefail
 
 CONFIG_DIR="./configs"
 
+# Helpful vars
+LUKS_LABEL="main"
+PARTITION_PFX=""
+[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PARTITION_PFX="p"
+EFI_PARTITION_DEV="${DISK}${PARTITION_PFX}1"
+MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
+MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
+
+SSD_MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=async"
+HDD_MOUNT_OPTIONS="noatime,compress=zstd,space_cache=v2,discard=async"
+
 ### Handle Config File
 ### ---------------------------------------------------------------------
 
@@ -104,24 +115,15 @@ sgdisk -n2:0:0      -t2:8300 -c2:"Linux (Btrfs+LUKS)" "$DISK"
 echo "Disk partitioned."
 
 
-### Encrypt Disk and Make filesystem 
+### Encrypt Disk (If enabled) 
 ### ---------------------------------------------------------------------
 
-PFX=""
-[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PFX="p"
-EFI="${DISK}${PFX}1"
-MAIN="${DISK}${PFX}2"
 
-echo "Encrypting Disk..."
-echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN" -q -
-echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN" main -
-echo "Disk encrypted."
-
-echo "Making filesystem..."
-
-
-mkfs.fat -F32 "$EFI"
-mkfs.btrfs -f /dev/mapper/main
+if [ "$ENCRYPT_DISK" == true ]; then
+  echo "Encrypting Disk..."
+  echo -n "$LUKS_PASS" | cryptsetup luksFormat "$MAIN_PARTITION_DEV" -q -
+  echo -n "$LUKS_PASS" | cryptsetup luksOpen "$MAIN_PARTITION_DEV" "$LUKS_LABEL" -
+fi
 
 
 
@@ -129,8 +131,24 @@ mkfs.btrfs -f /dev/mapper/main
 ### ---------------------------------------------------------------------
 
 # Create Btrfs Subvolumes
+if [ "$ENCRYPT_DISK" == true ]; then  
+  mkfs.btrfs -f "$MAIN_ENCRYPTED_PARTITION_DEV"
+else
+  mkfs.btrfs -f "$MAIN_PARTITION_DEV"
+fi
 echo "Creating Btrfs Subvolumes..."
-mount /dev/mapper/main /mnt
+
+# Format efi partition
+mkfs.fat -F32 "$EFI_PARTITION_DEV"
+
+# Mount correct partition
+if [ "$ENCRYPT_DISK" == true ]; then
+  mount "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt
+else
+  mount "$MAIN_PARTITION_DEV" /mnt
+fi
+
+# Create Btrfs Subvolumes
 cd /mnt
 btrfs subvolume create @
 btrfs subvolume create @home
@@ -138,13 +156,29 @@ echo "Btrfs Subvolumes created."
 cd -
 umount /mnt
 
+# Get correct mount options
+if [ "$SSD_DISK" == true ]; then
+  MOUNT_OPTIONS="$SSD_MOUNT_OPTIONS"
+else
+  MOUNT_OPTIONS="$HDD_MOUNT_OPTIONS"
+fi
+
 # Mount filesystems
 echo "Mounting..."
-mount -o $MOUNT_OPTIONS,subvol=@ /dev/mapper/main /mnt
+if [ "$ENCRYPT_DISK" == true ]; then
+  mount -o $MOUNT_OPTIONS,subvol=@ "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt
+else
+  mount -o $MOUNT_OPTIONS,subvol=@ "$MAIN_PARTITION_DEV" /mnt
+fi
 mkdir /mnt/home
-mount -o $MOUNT_OPTIONS,subvol=@home /dev/mapper/main /mnt/home
+if [ "$ENCRYPT_DISK" == true ]; then
+  mount -o $MOUNT_OPTIONS,subvol=@home "$MAIN_ENCRYPTED_PARTITION_DEV" /mnt/home
+else
+  mount -o $MOUNT_OPTIONS,subvol=@home "$MAIN_PARTITION_DEV" /mnt/home
+fi
 mkdir /mnt/boot
-mount "$EFI" /mnt/boot
+
+mount "$EFI_PARTITION_DEV" /mnt/boot
 echo "Filesystems mounted."
 
 

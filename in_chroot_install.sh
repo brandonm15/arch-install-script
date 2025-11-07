@@ -3,6 +3,14 @@
 # One of the commands does not exit with 0 so it breaks script.  Fix later.
 #set -euo pipefail
 
+# Helpful vars
+LUKS_LABEL="main"
+PARTITION_PFX=""
+[[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]] && PARTITION_PFX="p"
+EFI_PARTITION_DEV="${DISK}${PARTITION_PFX}1"
+MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
+MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
+
 echo -e "\n\nStarting chroot installation script...\n"
 
 # Load config
@@ -45,7 +53,13 @@ pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
   bluez bluez-utils pipewire alsa-utils pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd alacritty "$CPU_MICROCODE"
+  ttf-firacode-nerd alacritty
+
+if [ "$CPU" == "amd" ]; then
+  pacman -S --noconfirm amd-ucode
+elif [ "$CPU" == "intel" ]; then
+  pacman -S --noconfirm intel-ucode
+fi
 
 # mkinitcpio: add encrypt hook and btrfs module, then rebuild
 sed -i 's/^MODULES=.*/MODULES=(btrfs atkbd)/' /etc/mkinitcpio.conf
@@ -80,6 +94,9 @@ fi
 if [ "$HAS_BATTERY" = true ]; then
   systemctl enable acpid
 fi
+if [ "$SSD_DISK" = true ]; then
+  systemctl enable fstrim.timer
+fi
 systemctl enable sshd
 systemctl enable ufw
 
@@ -89,9 +106,28 @@ systemctl enable ufw
 #ufw allow OpenSSH || true
 #ufw --force enable || true
 
+# Install Yay
+sudo pacman -S --needed git base-devel
+git clone https://aur.archlinux.org/yay.git
+cd yay
+makepkg -si
+cd ..
+rm -rf yay
+
+
 # --- KDE Plasma desktop (full meta) + SDDM ---
 # plasma-meta is the full Plasma 5 desktop; kde-applications-meta is the app suite (optional)
-pacman -S --noconfirm plasma-meta kde-applications-meta sddm xdg-desktop-portal-kde
+sudo pacman -S plasma-meta sddm xdg-desktop-portal-kde
+sudo systemctl enable sddm
+
+
+# Install packages from list
+for pkg in "${PACMAN_INSTALL_LIST[@]}"; do
+  pacman -S --noconfirm "$pkg"
+done
+for pkg in "${YAY_INSTALL_LIST[@]}"; do
+  yay -S --noconfirm "$pkg"
+
 
 # Enable display manager
 systemctl enable sddm.service
