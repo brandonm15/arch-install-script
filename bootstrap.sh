@@ -14,8 +14,18 @@ if ! pacman -Q git &>/dev/null; then
   pacman -S --noconfirm git
 fi
 
-# Clone the repository
-git clone "$GIT_REPO_URL"
+
+
+#If repo dir exists ask if delete and reclone
+if ! [[ -d "arch-install-script" ]]; then
+  read -p "Repo directory exists. Delete and reclone? (y/N): " delete_repo
+  if [[ "$delete_repo" == "y" ]]; then
+    rm -rf arch-install-script
+    git clone "$GIT_REPO_URL"
+  fi
+else
+  git clone "$GIT_REPO_URL"
+fi
 
 # make executable
 chmod +x arch-install-script/install.sh
