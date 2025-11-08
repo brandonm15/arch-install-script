@@ -43,7 +43,7 @@ pacman -Syu --noconfirm \
   pipewire pipewire-pulse pipewire-jack sof-firmware \
   ttf-firacode-nerd 
 
-if [[ "$BLUETOOTH" == "true" ]]; then
+if [[ "$HAS_BLUETOOTH" == "true" ]]; then
   pacman -S --noconfirm bluez bluez-utils
 fi
 
