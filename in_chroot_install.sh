@@ -95,6 +95,7 @@ grub-mkconfig -o /boot/grub/grub.cfg
 # Services
 # -----------------------------
 systemctl enable NetworkManager
+systemctl start NetworkManager || true
 [[ "$HAS_BLUETOOTH" == true ]] && systemctl enable bluetooth
 [[ "$HAS_BATTERY" == true ]] && systemctl enable acpid
 [[ "$SSD_DISK" == true ]] && systemctl enable fstrim.timer
