@@ -161,6 +161,9 @@ cp in_chroot_install.sh /mnt/in_chroot_install.sh
 chmod +x /mnt/in_chroot_install.sh
 cp "$CONFIG_FILE" /mnt/config.conf
 
+info "Copying resolv.conf..."
+cp /etc/resolv.conf /mnt/etc/resolv.conf
+
 # ---------------------------
 # Chroot
 # ---------------------------
