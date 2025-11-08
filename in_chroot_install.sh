@@ -40,8 +40,13 @@ sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
-  bluez bluez-utils pipewire pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd alacritty
+  pipewire pipewire-pulse pipewire-jack sof-firmware \
+  ttf-firacode-nerd 
+
+if [[ "$BLUETOOTH" == "true" ]]; then
+  pacman -S --noconfirm bluez bluez-utils
+fi
+
 
 # CPU microcode
 if [[ "$CPU" == "amd" ]]; then
@@ -112,23 +117,28 @@ EOF
 # -----------------------------
 # KDE Plasma (no bloat)
 # -----------------------------
-pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
+pacman -S --noconfirm plasma-meta plasma-wayland-session sddm xdg-desktop-portal-kde
 systemctl enable sddm.service
 
-# Optional Wayland support:
-# pacman -S --noconfirm plasma-wayland-session
+# Enable multilib only if needed (Steam or other 32-bit packages)
+if printf '%s\n' "${PACMAN_INSTALL_LIST[@]}" | grep -qx "steam"; then
+  echo "Enabling multilib for Steam..."
+  sed -i '/^\[multilib\]/,/^Include/ s/^#//' /etc/pacman.conf
+  pacman -Sy
+fi
 
-# -----------------------------
-# Install extra packages
-# -----------------------------
+# Install pacman packages
 for pkg in "${PACMAN_INSTALL_LIST[@]}"; do
   pacman -S --noconfirm "$pkg"
 done
 
+# Install AUR packages with yay (must be run as the user)
 for pkg in "${YAY_INSTALL_LIST[@]}"; do
   sudo -u "$USERNAME" yay -S --noconfirm "$pkg"
 done
 
 echo
-echo "✅ Done inside chroot. When outside, run:"
-echo "  umount -R /mnt && reboot"
+echo "Installation complete. You are now inside the chroot environment."
+echo "Type 'exit' when you are done."
+
+exec /bin/bash
