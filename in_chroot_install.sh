@@ -41,7 +41,7 @@ pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
   pipewire pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd 
+  ttf-firacode-nerd rustup 
 
 if [[ "$HAS_BLUETOOTH" == "true" ]]; then
   pacman -S --noconfirm bluez bluez-utils
@@ -103,16 +103,16 @@ systemctl enable sshd
 systemctl enable ufw
 
 # -----------------------------
-# Yay Install as USER (not root)
+# Paru Install as USER (not root)
 # -----------------------------
 sudo -u "$USERNAME" bash <<EOF
   set -e
   cd /home/$USERNAME
-  git clone https://aur.archlinux.org/yay.git
-  cd yay
+  git clone https://aur.archlinux.org/paru.git
+  cd paru
   makepkg -si --noconfirm
   cd ..
-  rm -rf yay
+  rm -rf paru
 EOF
 
 # -----------------------------
@@ -133,9 +133,9 @@ for pkg in "${PACMAN_INSTALL_LIST[@]}"; do
   pacman -S --noconfirm "$pkg"
 done
 
-# Install AUR packages with yay (must be run as the user)
-for pkg in "${YAY_INSTALL_LIST[@]}"; do
-  sudo -u "$USERNAME" yay -S --noconfirm "$pkg"
+# Install AUR packages with paru (must be run as the user)
+for pkg in "${PARU_INSTALL_LIST[@]}"; do
+  sudo -u "$USERNAME" paru -S --noconfirm "$pkg"
 done
 
 echo
