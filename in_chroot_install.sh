@@ -109,6 +109,21 @@ systemctl enable ufw
 pacman -S --noconfirm rustup
 rustup install stable
 rustup default stable
+# Install rustup and Rust toolchain (system wide)
+pacman -S --noconfirm rustup
+sudo -u "$USERNAME" bash -c "
+  rustup install stable
+  rustup default stable
+"
+
+# Add Rust to PATH for all users (so makepkg sees it)
+echo 'export PATH="$PATH:/home/'"$USERNAME"'/.cargo/bin"' > /etc/profile.d/rust.sh
+chmod +x /etc/profile.d/rust.sh
+
+# Reload environment for current shell
+source /etc/profile.d/rust.sh
+
+
 
 # -----------------------------
 # Paru Install as USER (not root)
