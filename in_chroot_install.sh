@@ -138,13 +138,11 @@ sudo -u "$USERNAME" bash <<EOF
   rm -rf paru
 EOF
 
-# Update packages
-pacman -Syu
 
 # -----------------------------
-# KDE Plasma (no bloat)
+# KDE Plasma 
 # -----------------------------
-pacman -S --noconfirm plasma-meta plasma-wayland-session sddm xdg-desktop-portal-kde
+pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
 systemctl enable sddm.service
 
 # Enable multilib only if needed (Steam or other 32-bit packages)
