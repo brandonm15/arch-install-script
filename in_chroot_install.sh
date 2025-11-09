@@ -139,6 +139,8 @@ sudo -u "$USERNAME" bash <<EOF
 EOF
 
 
+
+
 # -----------------------------
 # KDE Plasma 
 # -----------------------------
@@ -149,17 +151,25 @@ systemctl enable sddm.service
 if printf '%s\n' "${PACMAN_INSTALL_LIST[@]}" | grep -qx "steam"; then
   echo "Enabling multilib for Steam..."
   sed -i '/^\[multilib\]/,/^Include/ s/^#//' /etc/pacman.conf
-  pacman -Sy
+  pacman -Syy --noconfirm
 fi
 
 # Install pacman packages
 for pkg in "${PACMAN_INSTALL_LIST[@]}"; do
-  pacman -S --noconfirm "$pkg"
+  if pacman -Si "$pkg" &>/dev/null; then
+    pacman -S --noconfirm "$pkg"
+  else
+    echo "WARNING: Package '$pkg' not found, skipping."
+  fi
 done
 
 # Install AUR packages with paru (must be run as the user)
 for pkg in "${PARU_INSTALL_LIST[@]}"; do
-  sudo -u "$USERNAME" paru -S --noconfirm "$pkg"
+  if sudo -u "$USERNAME" paru -Si "$pkg" &>/dev/null; then
+    sudo -u "$USERNAME" paru -S --noconfirm "$pkg" || echo "WARNING: Failed to install AUR package '$pkg'"
+  else
+    echo "WARNING: AUR package '$pkg' not found, skipping."
+  fi
 done
 
 echo
