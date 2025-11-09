@@ -41,7 +41,8 @@ pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
   pipewire pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd rustup 
+  ttf-firacode-nerd 
+
 
 if [[ "$HAS_BLUETOOTH" == "true" ]]; then
   pacman -S --noconfirm bluez bluez-utils
@@ -101,6 +102,13 @@ systemctl start NetworkManager || true
 [[ "$SSD_DISK" == true ]] && systemctl enable fstrim.timer
 systemctl enable sshd
 systemctl enable ufw
+
+# -----------------------------
+# Rustup Install
+# -----------------------------
+pacman -S --noconfirm rustup
+rustup install stable
+rustup default stable
 
 # -----------------------------
 # Paru Install as USER (not root)
