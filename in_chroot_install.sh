@@ -147,11 +147,31 @@ EOF
 pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
 systemctl enable sddm.service
 
+
+# -----------------------------
+# Enable multilib and steam
+# -----------------------------
+
 # Enable multilib only if needed (Steam or other 32-bit packages)
-if printf '%s\n' "${PACMAN_INSTALL_LIST[@]}" | grep -qx "steam"; then
+if [[ "$INSTALL_STEAM" == true ]]; then
   echo "Enabling multilib for Steam..."
-  sed -i '/^\[multilib\]/,/^Include/ s/^#//' /etc/pacman.conf
+  sed -i '/\[multilib\]/,/Include/ s/^[[:space:]]*#//g' /etc/pacman.conf
   pacman -Syy --noconfirm
+
+  case "$GPU" in
+    amd)
+      pacman -S --noconfirm vulkan-radeon lib32-vulkan-radeon steam
+      ;;
+    intel)
+      pacman -S --noconfirm vulkan-intel lib32-vulkan-intel steam
+      ;;
+    nvidia)
+      pacman -S --noconfirm nvidia-utils lib32-nvidia-utils steam
+      ;;
+    *)
+      echo "WARNING: Unknown GPU '$GPU' – skipping Vulkan drivers"
+      ;;
+  esac
 fi
 
 # Install pacman packages
