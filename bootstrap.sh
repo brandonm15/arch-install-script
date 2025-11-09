@@ -33,7 +33,7 @@ fi
 echo
 echo "You are now inside the bash instance."
 echo "Type 'exit' to return to the installer."
-exec /bin/bash
+bash
 
 # Make installer executable
 chmod +x "$REPO_DIR/install.sh"
