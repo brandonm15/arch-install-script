@@ -138,6 +138,9 @@ sudo -u "$USERNAME" bash <<EOF
   rm -rf paru
 EOF
 
+# Update packages
+pacman -Syu
+
 # -----------------------------
 # KDE Plasma (no bloat)
 # -----------------------------
