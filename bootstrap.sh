@@ -29,6 +29,12 @@ else
   git clone "$GIT_REPO_URL"
 fi
 
+# Enter bash instance to change passwors
+echo
+echo "You are now inside the bash instance."
+echo "Type 'exit' to return to the installer."
+exec /bin/bash
+
 # Make installer executable
 chmod +x "$REPO_DIR/install.sh"
 
