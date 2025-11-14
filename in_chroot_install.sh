@@ -142,10 +142,25 @@ EOF
 
 
 # -----------------------------
-# KDE Plasma 
+# Desktop Environment
 # -----------------------------
-pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
-systemctl enable sddm.service
+case "$DESKTOP_ENV" in
+  kde)
+    pacman -S --noconfirm plasma-meta sddm xdg-desktop-portal-kde
+    systemctl enable sddm.service
+    ;;
+  gnome)
+    pacman -S --noconfirm gnome gnome-extra
+    systemctl enable gdm.service
+    ;;
+  cinnamon)
+    pacman -S --noconfirm cinnamon lightdm lightdm-gtk-greeter
+    systemctl enable lightdm.service
+    ;;
+  *)
+    echo "WARNING: Unknown desktop environment '$DESKTOP_ENV' – skipping desktop environment installation"
+    ;;
+esac
 
 
 # -----------------------------
