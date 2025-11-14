@@ -8,6 +8,37 @@ set -a
 source /config.conf
 set +a
 
+STEAM_DIR="/home/$USERNAME/.local/share/steam"
+STEAM_SUBVOL_NAME="@steam"
+
+# ---------------------------
+# Derived vars (AFTER config)
+# ---------------------------
+[[ -n "${DISK:-}" ]] || die "DISK not set in config."
+[[ -b "$DISK" ]] || die "DISK '$DISK' is not a block device."
+
+LUKS_LABEL="${LUKS_LABEL:-main}"
+
+PARTITION_PFX=""
+if [[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]]; then
+  PARTITION_PFX="p"
+fi
+
+EFI_PARTITION_DEV="${DISK}${PARTITION_PFX}1"
+MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
+MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
+
+SSD_MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=async"
+HDD_MOUNT_OPTIONS="noatime,compress=zstd,space_cache=v2"
+MOUNT_OPTIONS="$([[ "${SSD_DISK:-false}" == true ]] && echo "$SSD_MOUNT_OPTIONS" || echo "$HDD_MOUNT_OPTIONS")"
+
+if [[ "${ENCRYPT_DISK:-false}" == true ]]; then
+  ROOT_DEV="${MAIN_ENCRYPTED_PARTITION_DEV}"
+else
+  ROOT_DEV="${MAIN_PARTITION_DEV}"
+fi
+
+
 # -----------------------------
 # Time / locale / keymap
 # -----------------------------
@@ -41,7 +72,7 @@ pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
   grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
   pipewire pipewire-pulse pipewire-jack sof-firmware \
-  ttf-firacode-nerd 
+  ttf-firacode-nerd timeshift 
 
 
 if [[ "$HAS_BLUETOOTH" == "true" ]]; then
@@ -139,6 +170,29 @@ sudo -u "$USERNAME" bash <<EOF
 EOF
 
 
+# -----------------------------
+# Steam btrfs subvolume
+# -----------------------------
+if [[ "$INSTALL_STEAM" == true ]]; then
+  mount -o "$MOUNT_OPTIONS",subvol=@steam /dev/mapper/main /home/$USERNAME/.local/share/Steam
+  # Create parent dirs if needed
+  mkdir -p "$(dirname "$STEAM_DIR")"
+
+  # Create a Btrfs subvolume for Steam
+  btrfs subvolume create "$STEAM_DIR"
+
+  # Get the subvolume ID
+  STEAM_SUBVOL_ID=$(btrfs subvolume list / | grep "$STEAM_SUBVOL_NAME" | awk '{ print $2 }')
+
+  # Get UUID of the root mount
+  BTRFS_UUID=$(findmnt -no UUID /)
+
+  # Add to fstab (use subvolid)
+  echo "UUID=$BTRFS_UUID  $STEAM_DIR  btrfs  subvolid=$STEAM_SUBVOL_ID,$MOUNT_OPTIONS 0 0" >> /etc/fstab
+
+  # Mount the subvolume
+  mount "STEAM_DIR"
+fi
 
 
 # -----------------------------

@@ -65,7 +65,7 @@ MAIN_PARTITION_DEV="${DISK}${PARTITION_PFX}2"
 MAIN_ENCRYPTED_PARTITION_DEV="/dev/mapper/${LUKS_LABEL}"
 
 SSD_MOUNT_OPTIONS="noatime,ssd,compress=zstd,space_cache=v2,discard=async"
-HDD_MOUNT_OPTIONS="noatime,compress=zstd,space_cache=v2,discard=async"
+HDD_MOUNT_OPTIONS="noatime,compress=zstd,space_cache=v2"
 MOUNT_OPTIONS="$([[ "${SSD_DISK:-false}" == true ]] && echo "$SSD_MOUNT_OPTIONS" || echo "$HDD_MOUNT_OPTIONS")"
 
 # ---------------------------
@@ -142,6 +142,7 @@ mkdir -p /mnt/home
 mount -o "$MOUNT_OPTIONS",subvol=@home "$ROOT_DEV" /mnt/home
 mkdir -p /mnt/boot
 mount "$EFI_PARTITION_DEV" /mnt/boot
+
 
 # ---------------------------
 # Base install
