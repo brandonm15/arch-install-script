@@ -174,7 +174,6 @@ EOF
 # Steam btrfs subvolume
 # -----------------------------
 if [[ "$INSTALL_STEAM" == true ]]; then
-  mount -o "$MOUNT_OPTIONS",subvol=@steam /dev/mapper/main /home/$USERNAME/.local/share/Steam
   # Create parent dirs if needed
   mkdir -p "$(dirname "$STEAM_DIR")"
 
