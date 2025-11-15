@@ -70,7 +70,7 @@ sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 # -----------------------------
 pacman -Syu --noconfirm \
   base-devel linux linux-headers linux-firmware btrfs-progs \
-  grub efibootmgr mtools networkmanager network-manager-applet openssh git ufw acpid grub-btrfs \
+  grub efibootmgr mtools networkmanager openssh git ufw acpid grub-btrfs \
   pipewire pipewire-pulse pipewire-jack sof-firmware \
   ttf-firacode-nerd timeshift 
 
