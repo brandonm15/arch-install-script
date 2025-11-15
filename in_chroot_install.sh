@@ -178,7 +178,7 @@ if [[ "$INSTALL_STEAM" == true ]]; then
   mkdir -p "$(dirname "$STEAM_DIR")"
 
   # Create a Btrfs subvolume for Steam
-  btrfs subvolume create "$STEAM_DIR"
+  btrfs subvolume create "$STEAM_SUBVOL_NAME"
 
   # Get the subvolume ID
   STEAM_SUBVOL_ID=$(btrfs subvolume list / | grep "$STEAM_SUBVOL_NAME" | awk '{ print $2 }')
