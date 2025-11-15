@@ -174,25 +174,33 @@ EOF
 # Steam btrfs subvolume
 # -----------------------------
 if [[ "$INSTALL_STEAM" == true ]]; then
-  # Create parent dirs if needed
-  mkdir -p "$(dirname "$STEAM_DIR")"
+  echo "Creating Steam Btrfs subvolume..."
 
-  # Create a Btrfs subvolume for Steam
-  btrfs subvolume create "$STEAM_SUBVOL_NAME"
+  # mount the top-level subvolume (real root)
+  mkdir -p /mnt/btrfs-root
+  mount -o subvol=/ "$ROOT_DEV" /mnt/btrfs-root
 
-  # Get the subvolume ID
-  STEAM_SUBVOL_ID=$(btrfs subvolume list / | grep "$STEAM_SUBVOL_NAME" | awk '{ print $2 }')
+  # create @steam inside the real btrfs root
+  btrfs subvolume create "/mnt/btrfs-root/$STEAM_SUBVOL_NAME"
 
-  # Get UUID of the root mount
+  # unmount top-level root
+  umount /mnt/btrfs-root
+
+  # ensure user steam directory exists inside mounted @
+  mkdir -p "$STEAM_DIR"
+
+  # get UUID of root btrfs filesystem
   BTRFS_UUID=$(findmnt -no UUID /)
 
-  # Add to fstab (use subvolid)
-  echo "UUID=$BTRFS_UUID  $STEAM_DIR  btrfs  subvolid=$STEAM_SUBVOL_ID,$MOUNT_OPTIONS 0 0" >> /etc/fstab
+  # add to fstab using subvol name (not subvolid)
+  echo "UUID=$BTRFS_UUID  $STEAM_DIR  btrfs  subvol=$STEAM_SUBVOL_NAME,$MOUNT_OPTIONS 0 0" >> /etc/fstab
 
-  # Mount the subvolume
-  mount "STEAM_DIR"
+  # reload fstab
+  systemctl daemon-reload
+
+  # mount it
+  mount "$STEAM_DIR"
 fi
-
 
 # -----------------------------
 # Desktop Environment
